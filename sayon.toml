@@ -1,0 +1,6 @@
+[package]
+name = "json_parser"
+version = "0.1.0"
+entry = "examples/tour.sayon"
+authors = ["Omnifex Studio"]
+description = "JSON with comments and trailing commas, JSON Pointer, JSON Patch, and JSON Merge Patch"

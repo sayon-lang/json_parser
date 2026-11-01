@@ -1,0 +1,21 @@
+# Reads settings.jsonc, a settings file with comments and trailing commas,
+# reads three of its values by their pointers, changes it with a patch, and
+# prints it as strict JSON. Run it with `sayon run examples/settings.sayon`
+# in this folder.
+
+json = import("standard/json.sayon")
+patch = import("src/patch.sayon")
+pointer = import("src/pointer.sayon")
+relaxed = import("src/relaxed.sayon")
+
+settings = relaxed.read("examples/settings.jsonc")
+for path in ["/server/port", "/server/hosts/1", "/log/level"]
+    value = pointer.get(settings, path)
+    if value != nothing
+        print(path, "is", json.encode(value))
+
+# Debugging logs, IPv6's address for this computer too, and only if the
+# port is still the one the file had.
+changes = json.parse("[{{\"op\": \"test\", \"path\": \"/server/port\", \"value\": 8080}}, {{\"op\": \"replace\", \"path\": \"/log/level\", \"value\": \"debug\"}}, {{\"op\": \"add\", \"path\": \"/server/hosts/-\", \"value\": \"::1\"}}]")
+settings = patch.apply(settings, changes)
+print(json.pretty(settings))

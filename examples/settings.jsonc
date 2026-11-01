@@ -1,0 +1,15 @@
+// Settings for a small web server, written with comments and trailing
+// commas, which json_parser's relaxed parser reads.
+{
+  "server": {
+    "port": 8080,          // 80 needs administrator rights
+    "hosts": [
+      "localhost",
+      "127.0.0.1",         /* both mean this computer */
+    ],
+  },
+  "log": {
+    "level": "info",
+    "file": "server.log",
+  },
+}

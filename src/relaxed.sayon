@@ -1,0 +1,147 @@
+# JSON with comments and trailing commas, as configuration files often
+# write it, VS Code's settings among them: `//` to the end of a line,
+# `/* */` around any text, and a comma before a closing `]` or `}`. An error
+# names the line and column of the text as it was written.
+
+io = import("standard/io.sayon")
+json = import("standard/json.sayon")
+strings = import("standard/strings.sayon")
+
+# The value the text holds.
+function parse(text: string) -> json.Json
+    return json.parse(strict(text))
+
+# The value the file at a path holds; an error names the file.
+function read(path: string) -> json.Json
+    text = io.read_file(path)
+    outcome = try parse(text)
+    if outcome is error
+        error("{path}: {outcome.message}")
+    return outcome
+
+# The text as strict JSON: each comment and each trailing comma blanked with
+# spaces, with its line breaks kept, so that the rest stays at its line and
+# column.
+function strict(text: string) -> string
+    written = blank_comments(strings.characters(text))
+    blank_trailing_commas(written)
+    return strings.join(written, "")
+
+private function blank_comments(characters: Array<string>) -> Array<string>
+    written: Array<string> = []
+    count = length(characters)
+    at = 0
+    quoted = false
+    while at < count
+        current = clone(characters[at])
+        following = ""
+        if at + 1 < count
+            following = clone(characters[at + 1])
+        if quoted
+            push(written, clone(current))
+            if current == "\\" and at + 1 < count
+                push(written, following)
+                at += 1
+            elseif current == "\""
+                quoted = false
+            at += 1
+        elseif current == "\""
+            quoted = true
+            push(written, current)
+            at += 1
+        elseif current == "/" and following == "/"
+            while at < count and characters[at] != "\n" and characters[at] != "\r"
+                push(written, " ")
+                at += 1
+        elseif current == "/" and following == "*"
+            start = at
+            push(written, " ")
+            push(written, " ")
+            at += 2
+            closed = false
+            while at < count and not closed
+                if characters[at] == "*" and at + 1 < count and characters[at + 1] == "/"
+                    push(written, " ")
+                    push(written, " ")
+                    at += 2
+                    closed = true
+                else
+                    push(written, kept_break(characters[at]))
+                    at += 1
+            if not closed
+                error("the comment at {place(characters, start)} is never closed with */")
+        elseif current == "\u{feff}" and at == 0
+            # A byte order mark, which some editors begin files with.
+            push(written, " ")
+            at += 1
+        else
+            push(written, current)
+            at += 1
+    return written
+
+# Blanks each comma outside a string that only spaces and line breaks
+# separate from a closing `]` or `}`.
+private function blank_trailing_commas(update written: Array<string>)
+    quoted = false
+    escaped = false
+    comma = -1
+    for at in range(length(written))
+        if quoted
+            if escaped
+                escaped = false
+            elseif written[at] == "\\"
+                escaped = true
+            elseif written[at] == "\""
+                quoted = false
+        elseif written[at] == "\""
+            quoted = true
+            comma = -1
+        elseif written[at] == ","
+            comma = at
+        elseif written[at] == "]" or written[at] == "}}"
+            if comma >= 0
+                written[comma] = " "
+            comma = -1
+        elseif not blank(written[at])
+            comma = -1
+
+private function blank(character: string) -> boolean
+    return character == " " or character == "\t" or character == "\n" or character == "\r"
+
+private function kept_break(character: string) -> string
+    if character == "\n" or character == "\r"
+        return clone(character)
+    return " "
+
+# Where a character is, as JSON's errors say it: a line, counting CRLF as
+# one line break, and a column of characters.
+private function place(characters: Array<string>, at: integer) -> string
+    line = 1
+    column = 1
+    for index in range(at)
+        if characters[index] == "\r"
+            line += 1
+            column = 1
+        elseif characters[index] == "\n"
+            if index == 0 or characters[index - 1] != "\r"
+                line += 1
+            column = 1
+        else
+            column += 1
+    return "line {line}, column {column}"
+
+test "comments and trailing commas are read"
+    text = "{{\n  // the port\n  \"port\": 8080, /* and a\n  longer comment */\n  \"hosts\": [\"a\", \"b\",],\n}}\n"
+    assert(json.encode(parse(text)) == "{{\"port\":8080,\"hosts\":[\"a\",\"b\"]}}")
+    assert(length(strict(text)) == length(text) and length(strings.lines(strict(text))) == length(strings.lines(text)))
+    # Inside strings, comment marks and commas are text.
+    assert(json.encode(parse("[\"http://a/*b*/\", \"c,]\", \"d//\"]")) == "[\"http://a/*b*/\",\"c,]\",\"d//\"]")
+    assert(json.encode(parse("\u{feff}[1, 2, /* last */ ]")) == "[1,2]")
+
+test "errors keep their places"
+    misplaced = try parse("{{\n  /* note */ \"a\": x\n}}")
+    assert(misplaced is error and strings.contains(misplaced.message, "line 2, column 19"))
+    unclosed = try parse("[1,\r\n  /* no end")
+    assert(unclosed is error and unclosed.message == "the comment at line 2, column 3 is never closed with */")
+    doubled = try parse("[1,, 2]")
+    assert(doubled is error)

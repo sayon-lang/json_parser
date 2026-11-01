@@ -1,0 +1,233 @@
+# JSON Pointer (RFC 6901): the place of a value in a document, written as
+# the names and positions that lead to it, each after a `/`, such as
+# `/servers/0/name`. In a name, `~1` stands for `/` and `~0` for `~`; the
+# pointer "" is the whole document. Changing a document gives the changed
+# one, as JSON Patch changes it.
+
+json = import("standard/json.sayon")
+strings = import("standard/strings.sayon")
+
+private enum Change
+    adding
+    replacing
+    removing
+
+# The names and positions a pointer goes through, unescaped: `/a~1b/0` goes
+# through `a/b`, then `0`.
+function parts(pointer: string) -> Array<string>
+    found: Array<string> = []
+    if pointer == ""
+        return found
+    if not strings.starts_with(pointer, "/")
+        error("\"{pointer}\" is not a JSON Pointer, which starts with `/`, or is \"\" for the whole document")
+    for part in strings.split(strings.slice(pointer, 1, length(pointer)), "/")
+        push(found, unescape(part, pointer))
+    return found
+
+# The pointer through names and positions, escaped.
+function from_parts(names: Array<string>) -> string
+    written = ""
+    for name in names
+        written += "/" + escape(name)
+    return written
+
+# A name as a pointer writes it, with `~` as `~0` and `/` as `~1`.
+function escape(name: string) -> string
+    return strings.replace(strings.replace(name, "~", "~0"), "/", "~1")
+
+# The value at the place, or nothing when the document has nothing there.
+function get(document: json.Json, pointer: string) -> json.Json or nothing
+    return find(document, parts(pointer), 0)
+
+# Whether the document has a value at the place.
+function has(document: json.Json, pointer: string) -> boolean
+    return get(document, pointer) != nothing
+
+# The document with a value added at the place: an object gets the member,
+# or a new value for it; a list gets the value before the item at the
+# position, or after its last for the position `-`. The place's parent
+# must be there. Adding at "" replaces the whole document.
+function add(own document: json.Json, pointer: string, own value: json.Json) -> json.Json
+    path = parts(pointer)
+    if length(path) == 0
+        return value
+    return changed(document, path, 0, value, Change.adding, pointer)
+
+# The document with the value at the place, which must be there, replaced.
+function replace(own document: json.Json, pointer: string, own value: json.Json) -> json.Json
+    path = parts(pointer)
+    if length(path) == 0
+        return value
+    return changed(document, path, 0, value, Change.replacing, pointer)
+
+# The document without the value at the place, which must be there; a
+# list's later items move down. JSON Patch names it, so it hides the
+# built-in `remove` in this file.
+# allow(shadowed_builtin)
+function remove(own document: json.Json, pointer: string) -> json.Json
+    path = parts(pointer)
+    if length(path) == 0
+        error("the whole document cannot be removed")
+    return changed(document, path, 0, json.Json.null, Change.removing, pointer)
+
+private function find(value: json.Json, path: Array<string>, depth: integer) -> json.Json or nothing
+    if depth == length(path)
+        return clone(value)
+    match value
+        case json.Json.object(fields)
+            if haskey(fields, path[depth])
+                return find(fields[path[depth]], path, depth + 1)
+            return nothing
+        case json.Json.list(items)
+            at = position(path[depth], length(items), false)
+            if at == nothing
+                return nothing
+            return find(items[at], path, depth + 1)
+        case _
+            return nothing
+
+# The value with the change made at the end of `path`, from `depth` on.
+private function changed(own value: json.Json, path: Array<string>, depth: integer, own new: json.Json, change: Change, pointer: string) -> json.Json
+    name = clone(path[depth])
+    last = depth == length(path) - 1
+    match move(value)
+        case json.Json.object(fields)
+            kept = fields
+            present = haskey(kept, name)
+            if not present and (not last or change != Change.adding)
+                error(absent(path, depth))
+            if not last
+                kept[name] = changed(clone(kept[name]), path, depth + 1, new, change, pointer)
+            elseif change == Change.removing
+                return json.Json.object(without_member(kept, name))
+            else
+                kept[clone(name)] = new
+            return json.Json.object(kept)
+        case json.Json.list(items)
+            kept = items
+            if last and change == Change.adding
+                at = position(name, length(kept), true)
+                if at == nothing
+                    error("{from_parts(prefix(path, depth))} is a list of {length(kept)} items, which has no position \"{name}\" to add at")
+                return json.Json.list(inserted(kept, at, new))
+            at = position(name, length(kept), false)
+            if at == nothing
+                error(absent(path, depth))
+            if not last
+                kept[at] = changed(clone(kept[at]), path, depth + 1, new, change, pointer)
+            elseif change == Change.removing
+                return json.Json.list(without_item(kept, at))
+            else
+                kept[at] = new
+            return json.Json.list(kept)
+        case _
+            error("{pointer} goes inside {from_parts(prefix(path, depth))}, which is neither an object nor a list")
+
+# The position a part names in a list of `count` items, or nothing: digits
+# without a leading zero, below the count, or for adding the count itself,
+# which `-` names too.
+private function position(part: string, count: integer, adding: boolean) -> integer or nothing
+    limit = count
+    if adding
+        limit = count + 1
+    if part == "-"
+        if adding
+            return count
+        return nothing
+    if part == "" or length(part) > 18 or length(part) > 1 and strings.starts_with(part, "0")
+        return nothing
+    for character in part
+        if character < "0" or character > "9"
+            return nothing
+    at = strings.parse_integer(part)
+    if at >= limit
+        return nothing
+    return at
+
+private function unescape(part: string, pointer: string) -> string
+    written = ""
+    escaping = false
+    for character in part
+        if escaping
+            if character == "0"
+                written += "~"
+            elseif character == "1"
+                written += "/"
+            else
+                error(bad_escape(pointer))
+            escaping = false
+        elseif character == "~"
+            escaping = true
+        else
+            written += character
+    if escaping
+        error(bad_escape(pointer))
+    return written
+
+private function bad_escape(pointer: string) -> string
+    return "\"{pointer}\" is not a JSON Pointer: `~` is followed by 0 or 1 there"
+
+private function absent(path: Array<string>, depth: integer) -> string
+    return "the document has nothing at {from_parts(prefix(path, depth + 1))}"
+
+private function prefix(path: Array<string>, count: integer) -> Array<string>
+    out: Array<string> = []
+    for at in range(count)
+        push(out, clone(path[at]))
+    return out
+
+private function without_member(own fields: Dict<string, json.Json>, name: string) -> Dict<string, json.Json>
+    kept: Dict<string, json.Json> = []
+    for key, value in fields
+        if key != name
+            kept[clone(key)] = clone(value)
+    return kept
+
+private function without_item(own items: Array<json.Json>, at: integer) -> Array<json.Json>
+    kept: Array<json.Json> = []
+    for index in range(length(items))
+        if index != at
+            push(kept, clone(items[index]))
+    return kept
+
+private function inserted(own items: Array<json.Json>, at: integer, own value: json.Json) -> Array<json.Json>
+    kept: Array<json.Json> = []
+    for index in range(length(items))
+        if index == at
+            push(kept, clone(value))
+        push(kept, clone(items[index]))
+    if at == length(items)
+        push(kept, value)
+    return kept
+
+test "pointers are read and written"
+    assert(length(parts("")) == 0 and parts("/") == [""] and parts("/a~1b/~0c/0") == ["a/b", "~c", "0"])
+    assert(from_parts(["a/b", "~c", ""]) == "/a~1b/~0c/" and escape("~/") == "~0~1")
+    for bad in ["a", "/a~2", "/a~"]
+        outcome = try parts(bad)
+        assert(outcome is error, bad)
+
+test "values are found"
+    document = json.parse("{{\"a\": [10, {{\"b\": true}}], \"\": 1}}")
+    assert(get(document, "/a/1/b") == json.Json.flag(true) and get(document, "/") == json.from_integer(1))
+    assert(get(document, "/a/2") == nothing and get(document, "/a/-") == nothing and get(document, "/a/01") == nothing)
+    assert(has(document, "/a/0") and not has(document, "/z") and not has(document, "/a/0/b"))
+
+test "documents are changed"
+    document = json.parse("{{\"a\": [1, 3], \"b\": {{\"c\": 1}}}}")
+    document = add(document, "/a/1", json.from_integer(2))
+    document = add(document, "/a/-", json.from_integer(4))
+    document = add(document, "/d", json.Json.text("new"))
+    document = replace(document, "/b/c", json.from_integer(2))
+    document = remove(document, "/a/0")
+    assert(json.encode(document) == "{{\"a\":[2,3,4],\"b\":{{\"c\":2}},\"d\":\"new\"}}")
+    missing = try replace(clone(document), "/z", json.Json.null)
+    assert(missing is error and missing.message == "the document has nothing at /z")
+    beyond = try remove(clone(document), "/a/9")
+    assert(beyond is error)
+    no_parent = try add(clone(document), "/z/y", json.Json.null)
+    assert(no_parent is error)
+    gap = try add(clone(document), "/a/9", json.Json.null)
+    assert(gap is error)
+    inside = try add(clone(document), "/d/e", json.Json.null)
+    assert(inside is error and inside.message == "/d/e goes inside /d, which is neither an object nor a list")

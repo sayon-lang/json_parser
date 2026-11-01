@@ -1,0 +1,73 @@
+# The examples of the RFCs json_parser follows: the pointers of RFC 6901
+# into its example document, the patches of RFC 6902's appendix, and the
+# merge patches of RFC 7396's.
+
+json = import("standard/json.sayon")
+patch = import("src/patch.sayon")
+pointer = import("src/pointer.sayon")
+
+function same(actual: json.Json, expected: string) -> boolean
+    return patch.equal(actual, json.parse(expected))
+
+function patched(document: string, operations: string, expected: string)
+    assert(same(patch.apply(json.parse(document), json.parse(operations)), expected), operations)
+
+function refused(document: string, operations: string)
+    outcome = try patch.apply(json.parse(document), json.parse(operations))
+    assert(outcome is error, operations)
+
+function merged(target: string, change: string, expected: string)
+    assert(same(patch.merge(json.parse(target), json.parse(change)), expected), change)
+
+test "RFC 6901: the pointers of section 5"
+    document = json.parse("{{\"foo\": [\"bar\", \"baz\"], \"\": 0, \"a/b\": 1, \"c%d\": 2, \"e^f\": 3, \"g|h\": 4, \"i\\\\j\": 5, \"k\\\"l\": 6, \" \": 7, \"m~n\": 8}}")
+    whole = pointer.get(document, "")
+    assert(whole != nothing and patch.equal(whole, document))
+    cases = ["/foo" = "[\"bar\", \"baz\"]", "/foo/0" = "\"bar\"", "/" = "0", "/a~1b" = "1", "/c%d" = "2", "/e^f" = "3", "/g|h" = "4", "/i\\j" = "5", "/k\"l" = "6", "/ " = "7", "/m~0n" = "8"]
+    for path, expected in cases
+        value = pointer.get(document, path)
+        assert(value != nothing and same(value, expected), path)
+
+test "RFC 6902: the examples of appendix A"
+    # A.1 to A.5: adding, removing, and replacing members and items.
+    patched("{{\"foo\": \"bar\"}}", "[{{\"op\": \"add\", \"path\": \"/baz\", \"value\": \"qux\"}}]", "{{\"baz\": \"qux\", \"foo\": \"bar\"}}")
+    patched("{{\"foo\": [\"bar\", \"baz\"]}}", "[{{\"op\": \"add\", \"path\": \"/foo/1\", \"value\": \"qux\"}}]", "{{\"foo\": [\"bar\", \"qux\", \"baz\"]}}")
+    patched("{{\"baz\": \"qux\", \"foo\": \"bar\"}}", "[{{\"op\": \"remove\", \"path\": \"/baz\"}}]", "{{\"foo\": \"bar\"}}")
+    patched("{{\"foo\": [\"bar\", \"qux\", \"baz\"]}}", "[{{\"op\": \"remove\", \"path\": \"/foo/1\"}}]", "{{\"foo\": [\"bar\", \"baz\"]}}")
+    patched("{{\"baz\": \"qux\", \"foo\": \"bar\"}}", "[{{\"op\": \"replace\", \"path\": \"/baz\", \"value\": \"boo\"}}]", "{{\"baz\": \"boo\", \"foo\": \"bar\"}}")
+    # A.6 and A.7: moving a member and an item.
+    patched("{{\"foo\": {{\"bar\": \"baz\", \"waldo\": \"fred\"}}, \"qux\": {{\"corge\": \"grault\"}}}}", "[{{\"op\": \"move\", \"from\": \"/foo/waldo\", \"path\": \"/qux/thud\"}}]", "{{\"foo\": {{\"bar\": \"baz\"}}, \"qux\": {{\"corge\": \"grault\", \"thud\": \"fred\"}}}}")
+    patched("{{\"foo\": [\"all\", \"grass\", \"cows\", \"eat\"]}}", "[{{\"op\": \"move\", \"from\": \"/foo/1\", \"path\": \"/foo/3\"}}]", "{{\"foo\": [\"all\", \"cows\", \"eat\", \"grass\"]}}")
+    # A.8 and A.9: tests that hold, and one that does not.
+    patched("{{\"baz\": \"qux\", \"foo\": [\"a\", 2, \"c\"]}}", "[{{\"op\": \"test\", \"path\": \"/baz\", \"value\": \"qux\"}}, {{\"op\": \"test\", \"path\": \"/foo/1\", \"value\": 2}}]", "{{\"baz\": \"qux\", \"foo\": [\"a\", 2, \"c\"]}}")
+    refused("{{\"baz\": \"qux\"}}", "[{{\"op\": \"test\", \"path\": \"/baz\", \"value\": \"bar\"}}]")
+    # A.10 to A.12: a nested object, a member the operation does not use,
+    # and a place whose parent is not there.
+    patched("{{\"foo\": \"bar\"}}", "[{{\"op\": \"add\", \"path\": \"/child\", \"value\": {{\"grandchild\": {{}}}}}}]", "{{\"foo\": \"bar\", \"child\": {{\"grandchild\": {{}}}}}}")
+    patched("{{\"foo\": \"bar\"}}", "[{{\"op\": \"add\", \"path\": \"/baz\", \"value\": \"qux\", \"xyz\": 123}}]", "{{\"foo\": \"bar\", \"baz\": \"qux\"}}")
+    refused("{{\"foo\": \"bar\"}}", "[{{\"op\": \"add\", \"path\": \"/baz/bat\", \"value\": \"qux\"}}]")
+    # A.13: a patch with a member twice is not JSON standard/json reads.
+    doubled = try json.parse("[{{\"op\": \"add\", \"path\": \"/baz\", \"value\": \"qux\", \"op\": \"remove\"}}]")
+    assert(doubled is error)
+    # A.14 and A.15: escapes are undone in order, and text is not a number.
+    patched("{{\"/\": 9, \"~1\": 10}}", "[{{\"op\": \"test\", \"path\": \"/~01\", \"value\": 10}}]", "{{\"/\": 9, \"~1\": 10}}")
+    refused("{{\"/\": 9, \"~1\": 10}}", "[{{\"op\": \"test\", \"path\": \"/~01\", \"value\": \"10\"}}]")
+    # A.16: a list added as one item.
+    patched("{{\"foo\": [\"bar\"]}}", "[{{\"op\": \"add\", \"path\": \"/foo/-\", \"value\": [\"abc\", \"def\"]}}]", "{{\"foo\": [\"bar\", [\"abc\", \"def\"]]}}")
+
+test "RFC 7396: the examples of appendix A"
+    merged("{{\"a\": \"b\"}}", "{{\"a\": \"c\"}}", "{{\"a\": \"c\"}}")
+    merged("{{\"a\": \"b\"}}", "{{\"b\": \"c\"}}", "{{\"a\": \"b\", \"b\": \"c\"}}")
+    merged("{{\"a\": \"b\"}}", "{{\"a\": null}}", "{{}}")
+    merged("{{\"a\": \"b\", \"b\": \"c\"}}", "{{\"a\": null}}", "{{\"b\": \"c\"}}")
+    merged("{{\"a\": [\"b\"]}}", "{{\"a\": \"c\"}}", "{{\"a\": \"c\"}}")
+    merged("{{\"a\": \"c\"}}", "{{\"a\": [\"b\"]}}", "{{\"a\": [\"b\"]}}")
+    merged("{{\"a\": {{\"b\": \"c\"}}}}", "{{\"a\": {{\"b\": \"d\", \"c\": null}}}}", "{{\"a\": {{\"b\": \"d\"}}}}")
+    merged("{{\"a\": [{{\"b\": \"c\"}}]}}", "{{\"a\": [1]}}", "{{\"a\": [1]}}")
+    merged("[\"a\", \"b\"]", "[\"c\", \"d\"]", "[\"c\", \"d\"]")
+    merged("{{\"a\": \"b\"}}", "[\"c\"]", "[\"c\"]")
+    merged("{{\"a\": \"foo\"}}", "null", "null")
+    merged("{{\"a\": \"foo\"}}", "\"bar\"", "\"bar\"")
+    merged("{{\"e\": null}}", "{{\"a\": 1}}", "{{\"e\": null, \"a\": 1}}")
+    merged("[1, 2]", "{{\"a\": \"b\", \"c\": null}}", "{{\"a\": \"b\"}}")
+    merged("{{}}", "{{\"a\": {{\"bb\": {{\"ccc\": null}}}}}}", "{{\"a\": {{\"bb\": {{}}}}}}")

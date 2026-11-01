@@ -1,0 +1,20 @@
+# A tour of json_parser: settings with comments read, a value found by its
+# pointer, and the settings changed by a patch and a merge patch. Run it
+# with `sayon run` in this folder.
+
+json = import("standard/json.sayon")
+patch = import("src/patch.sayon")
+pointer = import("src/pointer.sayon")
+relaxed = import("src/relaxed.sayon")
+
+settings = relaxed.parse("{{\n  // where to listen\n  \"port\": 8080,\n  \"hosts\": [\"a.example\", \"b.example\",],\n}}")
+port = pointer.get(settings, "/port")
+host = pointer.get(settings, "/hosts/1")
+if port != nothing and host != nothing
+    print("the port is", json.encode(port), "and the second host", json.encode(host))
+
+settings = pointer.replace(settings, "/hosts/1", json.Json.text("c.example"))
+settings = patch.apply(settings, json.parse("[{{\"op\": \"add\", \"path\": \"/debug\", \"value\": true}}, {{\"op\": \"copy\", \"from\": \"/port\", \"path\": \"/fallback_port\"}}]"))
+print("patched:", json.encode(settings))
+settings = patch.merge(settings, json.parse("{{\"port\": 9090, \"debug\": null}}"))
+print("merged:", json.encode(settings))

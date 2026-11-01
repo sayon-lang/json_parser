@@ -1,0 +1,22 @@
+# Two ways to describe a change to a document: JSON Patch, a list of
+# operations that applies whole or not at all, and JSON Merge Patch, a
+# document of the changed members. Run it with
+# `sayon run examples/changes.sayon` in this folder.
+
+json = import("standard/json.sayon")
+patch = import("src/patch.sayon")
+
+order = json.parse("{{\"id\": 41, \"items\": [{{\"name\": \"tea\", \"count\": 2}}], \"note\": \"ring twice\", \"paid\": false}}")
+print("the order:     ", json.encode(order))
+
+operations = json.parse("[{{\"op\": \"add\", \"path\": \"/items/-\", \"value\": {{\"name\": \"cake\", \"count\": 1}}}}, {{\"op\": \"replace\", \"path\": \"/items/0/count\", \"value\": 3}}, {{\"op\": \"remove\", \"path\": \"/note\"}}]")
+print("patched:       ", json.encode(patch.apply(order, operations)))
+
+# A test that fails stops the patch, and the order is as it was.
+paying = json.parse("[{{\"op\": \"replace\", \"path\": \"/paid\", \"value\": true}}, {{\"op\": \"test\", \"path\": \"/id\", \"value\": 42}}]")
+outcome = try patch.apply(order, paying)
+if outcome is error
+    print("not paid:      ", outcome.message)
+
+changes = json.parse("{{\"paid\": true, \"note\": null, \"delivery\": {{\"day\": \"Friday\"}}}}")
+print("merged:        ", json.encode(patch.merge(order, changes)))

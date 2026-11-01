@@ -1,0 +1,192 @@
+# JSON Patch (RFC 6902), a list of operations that change a document, and
+# JSON Merge Patch (RFC 7396), a document of the changes themselves, in
+# which `null` removes a member. `equal` compares values as both do.
+
+json = import("standard/json.sayon")
+strings = import("standard/strings.sayon")
+pointer = import("src/pointer.sayon")
+
+# The document with a patch's operations made in order: `add`, `remove`,
+# `replace`, `move`, `copy`, and `test`, each an object with its `op`, its
+# `path`, and its `value` or `from`. A patch applies whole or not at all:
+# an operation that cannot be made, or a test that fails, raises an error
+# that names it, and the document given stays as it was.
+function apply(document: json.Json, patch: json.Json) -> json.Json
+    result = clone(document)
+    match patch
+        case json.Json.list(operations)
+            for position in range(length(operations))
+                result = step(result, operations[position], position)
+        case _
+            error("a JSON Patch is a list of operations, not {kind(patch)}")
+    return result
+
+# The target with a merge patch applied: each member of a patch that is an
+# object changes the target's member of that name, in the same way, and a
+# member that is `null` removes it; a patch of any other kind replaces the
+# target.
+function merge(target: json.Json, patch: json.Json) -> json.Json
+    match patch
+        case json.Json.object(changes)
+            result = members(target)
+            for name, change in changes
+                if change == json.Json.null
+                    remove(result, name)
+                elseif haskey(result, name)
+                    result[name] = merge(result[name], change)
+                else
+                    result[clone(name)] = merge(json.Json.null, change)
+            return json.Json.object(result)
+        case _
+            return clone(patch)
+
+# Whether two values are the same JSON: numbers by their value, so that `1`
+# and `1.0` are; objects whatever the order of their members; and lists
+# item by item.
+function equal(a: json.Json, b: json.Json) -> boolean
+    match a
+        case json.Json.number(digits)
+            match b
+                case json.Json.number(others)
+                    return same_number(digits, others)
+                case _
+                    return false
+        case json.Json.list(items)
+            match b
+                case json.Json.list(others)
+                    if length(items) != length(others)
+                        return false
+                    for position in range(length(items))
+                        if not equal(items[position], others[position])
+                            return false
+                    return true
+                case _
+                    return false
+        case json.Json.object(fields)
+            match b
+                case json.Json.object(others)
+                    if length(fields) != length(others)
+                        return false
+                    for name, value in fields
+                        if not haskey(others, name) or not equal(value, others[name])
+                            return false
+                    return true
+                case _
+                    return false
+        case _
+            return a == b
+
+private function step(own document: json.Json, operation: json.Json, position: integer) -> json.Json
+    op = text_member(operation, "op", position)
+    path = text_member(operation, "path", position)
+    try
+        return made(document, operation, op, path, position)
+    catch problem
+        error("operation {position} ({op} {path}): {problem.message}")
+
+private function made(own document: json.Json, operation: json.Json, op: string, path: string, position: integer) -> json.Json
+    match op
+        case "add"
+            return pointer.add(document, path, value_member(operation, position))
+        case "remove"
+            return pointer.remove(document, path)
+        case "replace"
+            return pointer.replace(document, path, value_member(operation, position))
+        case "move"
+            source = text_member(operation, "from", position)
+            if source == path
+                return document
+            if strings.starts_with(path, source + "/")
+                error("a value cannot be moved inside itself")
+            moved = found(document, source)
+            return pointer.add(pointer.remove(document, source), path, moved)
+        case "copy"
+            copied = found(document, text_member(operation, "from", position))
+            return pointer.add(document, path, copied)
+        case "test"
+            expected = value_member(operation, position)
+            actual = found(document, path)
+            if not equal(actual, expected)
+                error("the test fails: the document has {json.encode(actual)} there, not {json.encode(expected)}")
+            return document
+        case _
+            error("\"{op}\" is not an operation of JSON Patch, which has add, remove, replace, move, copy, and test")
+
+private function found(document: json.Json, path: string) -> json.Json
+    value = pointer.get(document, path)
+    if value == nothing
+        error("the document has nothing at {path}")
+    return value
+
+private function text_member(operation: json.Json, name: string, position: integer) -> string
+    value = json.field(operation, name)
+    if value != nothing
+        text = json.text_value(value)
+        if text != nothing
+            return text
+    error("operation {position} has no text \"{name}\"")
+
+private function value_member(operation: json.Json, position: integer) -> json.Json
+    value = json.field(operation, "value")
+    if value == nothing
+        error("operation {position} has no \"value\"")
+    return value
+
+# The members of an object, or none for a value of another kind.
+private function members(value: json.Json) -> Dict<string, json.Json>
+    match value
+        case json.Json.object(fields)
+            return clone(fields)
+        case _
+            empty: Dict<string, json.Json> = []
+            return empty
+
+private function same_number(first: string, second: string) -> boolean
+    if first == second
+        return true
+    a = json.number_value(json.Json.number(clone(first)))
+    b = json.number_value(json.Json.number(clone(second)))
+    if a == nothing or b == nothing
+        return false
+    if typeof(a) == "integer" and typeof(b) == "integer"
+        return a == b
+    return as_float(a) == as_float(b)
+
+private function as_float(value: integer or float) -> float
+    if typeof(value) == "integer"
+        return float(value)
+    return value
+
+private function kind(value: json.Json) -> string
+    match value
+        case json.Json.null
+            return "null"
+        case json.Json.flag(_)
+            return "true or false"
+        case json.Json.number(_)
+            return "a number"
+        case json.Json.text(_)
+            return "text"
+        case json.Json.list(_)
+            return "a list"
+        case json.Json.object(_)
+            return "an object"
+
+test "values are compared as JSON"
+    assert(equal(json.parse("1"), json.parse("1.0")) and equal(json.parse("1e2"), json.parse("100")))
+    assert(equal(json.parse("{{\"a\": 1, \"b\": [true]}}"), json.parse("{{\"b\": [true], \"a\": 1}}")))
+    assert(not equal(json.parse("[1, 2]"), json.parse("[2, 1]")) and not equal(json.parse("1"), json.parse("\"1\"")))
+    assert(not equal(json.parse("{{\"a\": 1}}"), json.parse("{{\"a\": 1, \"b\": 2}}")))
+
+test "a failing operation leaves the document as it was"
+    document = json.parse("{{\"a\": 1}}")
+    patch = json.parse("[{{\"op\": \"add\", \"path\": \"/b\", \"value\": 2}}, {{\"op\": \"remove\", \"path\": \"/c\"}}]")
+    outcome = try apply(document, patch)
+    assert(outcome is error and outcome.message == "operation 1 (remove /c): the document has nothing at /c")
+    assert(json.encode(document) == "{{\"a\":1}}")
+    unknown = try apply(document, json.parse("[{{\"op\": \"rename\", \"path\": \"/a\"}}]"))
+    assert(unknown is error and strings.contains(unknown.message, "is not an operation of JSON Patch"))
+    not_a_list = try apply(document, json.parse("{{}}"))
+    assert(not_a_list is error and not_a_list.message == "a JSON Patch is a list of operations, not an object")
+    into_itself = try apply(json.parse("{{\"a\": {{\"b\": 1}}}}"), json.parse("[{{\"op\": \"move\", \"from\": \"/a\", \"path\": \"/a/b/c\"}}]"))
+    assert(into_itself is error)
