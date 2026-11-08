@@ -1,10 +1,10 @@
 # json_parser
 
-JSON as configuration files and APIs use it, for [Sayon](https://github.com/sayon-lang/sayon), written in Sayon. `standard/json.sayon` reads and writes strict JSON; this package reads JSON with comments and trailing commas, finds values by JSON Pointer, and changes documents with JSON Patch and JSON Merge Patch.
+JSON the way configuration files and APIs actually use it, for [Sayon](https://github.com/sayon-lang/sayon), written in Sayon. `standard/json.sayon` reads and writes strict JSON. This package adds the rest: JSON with comments and trailing commas, JSON Pointer for finding values, and JSON Patch and JSON Merge Patch for changing documents.
 
 ## Using it
 
-Add it to a project's `sayon.toml`, and run `sayon install`:
+Add it to your project's `sayon.toml` and run `sayon install`:
 
 ```toml
 [dependencies]
