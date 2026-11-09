@@ -1,6 +1,8 @@
-# A tour of json_parser: settings with comments read, a value found by its
-# pointer, and the settings changed by a patch and a merge patch. Run it
-# with `sayon run` in this folder.
+##
+A tour of json_parser: settings with comments read, a value found by its
+pointer, and the settings changed by a patch and a merge patch. Run it
+with `sayon run` in this folder.
+##
 
 json = import("standard/json.sayon")
 patch = import("src/patch.sayon")

@@ -1,7 +1,9 @@
-# JSON with comments and trailing commas, as configuration files often
-# write it, VS Code's settings among them: `//` to the end of a line,
-# `/* */` around any text, and a comma before a closing `]` or `}`. An error
-# names the line and column of the text as it was written.
+##
+JSON with comments and trailing commas, as configuration files often
+write it, VS Code's settings among them: `//` to the end of a line,
+`/* */` around any text, and a comma before a closing `]` or `}`. An error
+names the line and column of the text as it was written.
+##
 
 io = import("standard/io.sayon")
 json = import("standard/json.sayon")
@@ -19,9 +21,11 @@ function read(path: string) -> json.Json
         error("{path}: {outcome.message}")
     return outcome
 
-# The text as strict JSON: each comment and each trailing comma blanked with
-# spaces, with its line breaks kept, so that the rest stays at its line and
-# column.
+##
+The text as strict JSON: each comment and each trailing comma blanked with
+spaces, with its line breaks kept, so that the rest stays at its line and
+column.
+##
 function strict(text: string) -> string
     written = blank_comments(strings.characters(text))
     blank_trailing_commas(written)
@@ -79,8 +83,10 @@ private function blank_comments(characters: Array<string>) -> Array<string>
             at += 1
     return written
 
-# Blanks each comma outside a string that only spaces and line breaks
-# separate from a closing `]` or `}`.
+##
+Blanks each comma outside a string that only spaces and line breaks
+separate from a closing `]` or `}`.
+##
 private function blank_trailing_commas(update written: Array<string>)
     quoted = false
     escaped = false
@@ -113,8 +119,10 @@ private function kept_break(character: string) -> string
         return clone(character)
     return " "
 
-# Where a character is, as JSON's errors say it: a line, counting CRLF as
-# one line break, and a column of characters.
+##
+Where a character is, as JSON's errors say it: a line, counting CRLF as
+one line break, and a column of characters.
+##
 private function place(characters: Array<string>, at: integer) -> string
     line = 1
     column = 1

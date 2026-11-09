@@ -1,7 +1,9 @@
-# Two ways to describe a change to a document: JSON Patch, a list of
-# operations that applies whole or not at all, and JSON Merge Patch, a
-# document of the changed members. Run it with
-# `sayon run examples/changes.sayon` in this folder.
+##
+Two ways to describe a change to a document: JSON Patch, a list of
+operations that applies whole or not at all, and JSON Merge Patch, a
+document of the changed members. Run it with
+`sayon run examples/changes.sayon` in this folder.
+##
 
 json = import("standard/json.sayon")
 patch = import("src/patch.sayon")

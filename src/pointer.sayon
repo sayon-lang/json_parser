@@ -1,8 +1,10 @@
-# JSON Pointer (RFC 6901): the place of a value in a document, written as
-# the names and positions that lead to it, each after a `/`, such as
-# `/servers/0/name`. In a name, `~1` stands for `/` and `~0` for `~`; the
-# pointer "" is the whole document. Changing a document gives the changed
-# one, as JSON Patch changes it.
+##
+JSON Pointer (RFC 6901): the place of a value in a document, written as
+the names and positions that lead to it, each after a `/`, such as
+`/servers/0/name`. In a name, `~1` stands for `/` and `~0` for `~`; the
+pointer "" is the whole document. Changing a document gives the changed
+one, as JSON Patch changes it.
+##
 
 json = import("standard/json.sayon")
 strings = import("standard/strings.sayon")
@@ -12,8 +14,10 @@ private enum Change
     replacing
     removing
 
-# The names and positions a pointer goes through, unescaped: `/a~1b/0` goes
-# through `a/b`, then `0`.
+##
+The names and positions a pointer goes through, unescaped: `/a~1b/0` goes
+through `a/b`, then `0`.
+##
 function parts(pointer: string) -> Array<string>
     found: Array<string> = []
     if pointer == ""
@@ -43,10 +47,12 @@ function get(document: json.Json, pointer: string) -> json.Json or nothing
 function has(document: json.Json, pointer: string) -> boolean
     return get(document, pointer) != nothing
 
-# The document with a value added at the place: an object gets the member,
-# or a new value for it; a list gets the value before the item at the
-# position, or after its last for the position `-`. The place's parent
-# must be there. Adding at "" replaces the whole document.
+##
+The document with a value added at the place: an object gets the member,
+or a new value for it; a list gets the value before the item at the
+position, or after its last for the position `-`. The place's parent
+must be there. Adding at "" replaces the whole document.
+##
 function add(own document: json.Json, pointer: string, own value: json.Json) -> json.Json
     path = parts(pointer)
     if length(path) == 0
@@ -60,9 +66,11 @@ function replace(own document: json.Json, pointer: string, own value: json.Json)
         return value
     return changed(document, path, 0, value, Change.replacing, pointer)
 
-# The document without the value at the place, which must be there; a
-# list's later items move down. JSON Patch names it, so it hides the
-# built-in `remove` in this file.
+##
+The document without the value at the place, which must be there; a
+list's later items move down. JSON Patch names it, so it hides the
+built-in `remove` in this file.
+##
 # allow(shadowed_builtin)
 function remove(own document: json.Json, pointer: string) -> json.Json
     path = parts(pointer)
@@ -123,9 +131,11 @@ private function changed(own value: json.Json, path: Array<string>, depth: integ
         case _
             error("{pointer} goes inside {from_parts(prefix(path, depth))}, which is neither an object nor a list")
 
-# The position a part names in a list of `count` items, or nothing: digits
-# without a leading zero, below the count, or for adding the count itself,
-# which `-` names too.
+##
+The position a part names in a list of `count` items, or nothing: digits
+without a leading zero, below the count, or for adding the count itself,
+which `-` names too.
+##
 private function position(part: string, count: integer, adding: boolean) -> integer or nothing
     limit = count
     if adding

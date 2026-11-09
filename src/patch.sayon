@@ -1,16 +1,20 @@
-# JSON Patch (RFC 6902), a list of operations that change a document, and
-# JSON Merge Patch (RFC 7396), a document of the changes themselves, in
-# which `null` removes a member. `equal` compares values as both do.
+##
+JSON Patch (RFC 6902), a list of operations that change a document, and
+JSON Merge Patch (RFC 7396), a document of the changes themselves, in
+which `null` removes a member. `equal` compares values as both do.
+##
 
 json = import("standard/json.sayon")
 strings = import("standard/strings.sayon")
 pointer = import("src/pointer.sayon")
 
-# The document with a patch's operations made in order: `add`, `remove`,
-# `replace`, `move`, `copy`, and `test`, each an object with its `op`, its
-# `path`, and its `value` or `from`. A patch applies whole or not at all:
-# an operation that cannot be made, or a test that fails, raises an error
-# that names it, and the document given stays as it was.
+##
+The document with a patch's operations made in order: `add`, `remove`,
+`replace`, `move`, `copy`, and `test`, each an object with its `op`, its
+`path`, and its `value` or `from`. A patch applies whole or not at all:
+an operation that cannot be made, or a test that fails, raises an error
+that names it, and the document given stays as it was.
+##
 function apply(document: json.Json, patch: json.Json) -> json.Json
     result = clone(document)
     match patch
@@ -21,10 +25,12 @@ function apply(document: json.Json, patch: json.Json) -> json.Json
             error("a JSON Patch is a list of operations, not {kind(patch)}")
     return result
 
-# The target with a merge patch applied: each member of a patch that is an
-# object changes the target's member of that name, in the same way, and a
-# member that is `null` removes it; a patch of any other kind replaces the
-# target.
+##
+The target with a merge patch applied: each member of a patch that is an
+object changes the target's member of that name, in the same way, and a
+member that is `null` removes it; a patch of any other kind replaces the
+target.
+##
 function merge(target: json.Json, patch: json.Json) -> json.Json
     match patch
         case json.Json.object(changes)
@@ -40,9 +46,11 @@ function merge(target: json.Json, patch: json.Json) -> json.Json
         case _
             return clone(patch)
 
-# Whether two values are the same JSON: numbers by their value, so that `1`
-# and `1.0` are; objects whatever the order of their members; and lists
-# item by item.
+##
+Whether two values are the same JSON: numbers by their value, so that `1`
+and `1.0` are; objects whatever the order of their members; and lists
+item by item.
+##
 function equal(a: json.Json, b: json.Json) -> boolean
     match a
         case json.Json.number(digits)

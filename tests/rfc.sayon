@@ -1,6 +1,8 @@
-# The examples of the RFCs json_parser follows: the pointers of RFC 6901
-# into its example document, the patches of RFC 6902's appendix, and the
-# merge patches of RFC 7396's.
+##
+The examples of the RFCs json_parser follows: the pointers of RFC 6901
+into its example document, the patches of RFC 6902's appendix, and the
+merge patches of RFC 7396's.
+##
 
 json = import("standard/json.sayon")
 patch = import("src/patch.sayon")
@@ -41,8 +43,10 @@ test "RFC 6902: the examples of appendix A"
     # A.8 and A.9: tests that hold, and one that does not.
     patched("{{\"baz\": \"qux\", \"foo\": [\"a\", 2, \"c\"]}}", "[{{\"op\": \"test\", \"path\": \"/baz\", \"value\": \"qux\"}}, {{\"op\": \"test\", \"path\": \"/foo/1\", \"value\": 2}}]", "{{\"baz\": \"qux\", \"foo\": [\"a\", 2, \"c\"]}}")
     refused("{{\"baz\": \"qux\"}}", "[{{\"op\": \"test\", \"path\": \"/baz\", \"value\": \"bar\"}}]")
-    # A.10 to A.12: a nested object, a member the operation does not use,
-    # and a place whose parent is not there.
+    ##
+    A.10 to A.12: a nested object, a member the operation does not use,
+    and a place whose parent is not there.
+    ##
     patched("{{\"foo\": \"bar\"}}", "[{{\"op\": \"add\", \"path\": \"/child\", \"value\": {{\"grandchild\": {{}}}}}}]", "{{\"foo\": \"bar\", \"child\": {{\"grandchild\": {{}}}}}}")
     patched("{{\"foo\": \"bar\"}}", "[{{\"op\": \"add\", \"path\": \"/baz\", \"value\": \"qux\", \"xyz\": 123}}]", "{{\"foo\": \"bar\", \"baz\": \"qux\"}}")
     refused("{{\"foo\": \"bar\"}}", "[{{\"op\": \"add\", \"path\": \"/baz/bat\", \"value\": \"qux\"}}]")
